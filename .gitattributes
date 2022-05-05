@@ -1,0 +1,4 @@
+app/build/intermediates/merged_native_libs/debug/out/lib/x86_64/libopencv_java4.so filter=lfs diff=lfs merge=lfs -text
+app/build/intermediates/stripped_native_libs/debug/out/lib/x86_64/libopencv_java4.so filter=lfs diff=lfs merge=lfs -text
+opencv/native/libs/x86_64/libopencv_java4.so filter=lfs diff=lfs merge=lfs -text
+opencv/native/3rdparty/libs/x86_64/libippicv.a filter=lfs diff=lfs merge=lfs -text
