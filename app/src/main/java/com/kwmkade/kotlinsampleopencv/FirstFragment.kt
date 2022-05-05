@@ -7,6 +7,10 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.navigation.fragment.findNavController
 import com.kwmkade.kotlinsampleopencv.databinding.FragmentFirstBinding
+import org.opencv.android.CameraBridgeViewBase
+import org.opencv.android.OpenCVLoader
+import org.opencv.core.Core
+import org.opencv.core.Mat
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
@@ -25,6 +29,10 @@ class FirstFragment : Fragment() {
     ): View? {
 
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
+
+        OpenCVLoader.initDebug()  // ← OpenCVライブラリ読込
+        initCamera()
+
         return binding.root
 
     }
@@ -40,5 +48,26 @@ class FirstFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    fun initCamera() {
+
+        // リスナ設定
+        binding.cameraView.setCvCameraViewListener(object : CameraBridgeViewBase.CvCameraViewListener2 {
+            override fun onCameraViewStarted(width: Int, height: Int) { }
+
+            override fun onCameraViewStopped() { }
+
+            override fun onCameraFrame(inputFrame: CameraBridgeViewBase.CvCameraViewFrame?): Mat {
+                // このメソッド内で画像処理. 今回はポジネガ反転.
+                val mat = requireNotNull(inputFrame).rgba()
+                Core.bitwise_not(mat, mat)
+                return mat
+            }
+        })
+
+        // プレビューを有効にする
+        binding.cameraView.setCameraPermissionGranted()
+        binding.cameraView.enableView()
     }
 }
