@@ -1,10 +1,15 @@
 package org.opencv.android;
 
+import static org.opencv.core.Core.ROTATE_180;
+import static org.opencv.core.Core.ROTATE_90_CLOCKWISE;
+import static org.opencv.core.Core.ROTATE_90_COUNTERCLOCKWISE;
+
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.ImageFormat;
 import android.hardware.camera2.CameraAccessException;
@@ -23,6 +28,7 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.ViewGroup.LayoutParams;
 
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
@@ -54,6 +60,9 @@ public class JavaCamera2View extends CameraBridgeViewBase {
 
     private HandlerThread mBackgroundThread;
     protected Handler mBackgroundHandler;
+
+    private boolean mIsPortrait;
+    private int mRotationIndex = 0; //0:do nothing　1:rotate CW90　2:rotate 180　3:rotate CCW90
 
     public JavaCamera2View(Context context, int cameraId) {
         super(context, cameraId);
@@ -299,17 +308,31 @@ public class JavaCamera2View extends CameraBridgeViewBase {
     @Override
     protected boolean connectCamera(int width, int height) {
         Log.i(LOGTAG, "setCameraPreviewSize(" + width + "x" + height + ")");
+
+        mIsPortrait = width < height;
+
         startBackgroundThread();
         initializeCamera();
         try {
-            boolean needReconfig = calcPreviewSize(width, height);
-            mFrameWidth = mPreviewSize.getWidth();
-            mFrameHeight = mPreviewSize.getHeight();
+            boolean needReconfig = false;
+            if (mIsPortrait) {
+                needReconfig = calcPreviewSize(height, width);
+                mFrameWidth = mPreviewSize.getHeight();
+                mFrameHeight = mPreviewSize.getWidth();
+            } else {
+                needReconfig = calcPreviewSize(width, height);
+                mFrameWidth = mPreviewSize.getWidth();
+                mFrameHeight = mPreviewSize.getHeight();
+            }
 
             if ((getLayoutParams().width == LayoutParams.MATCH_PARENT) && (getLayoutParams().height == LayoutParams.MATCH_PARENT))
                 mScale = Math.min(((float)height)/mFrameHeight, ((float)width)/mFrameWidth);
             else
                 mScale = 0;
+
+            if (mFpsMeter != null) {
+                mFpsMeter.setResolution(mFrameWidth, mFrameHeight);
+            }
 
             AllocateCache();
 
@@ -324,6 +347,9 @@ public class JavaCamera2View extends CameraBridgeViewBase {
         } catch (RuntimeException e) {
             throw new RuntimeException("Interrupted while setCameraPreviewSize.", e);
         }
+
+        mRotationIndex = getRotationIndex();
+
         return true;
     }
 
@@ -337,7 +363,15 @@ public class JavaCamera2View extends CameraBridgeViewBase {
             ByteBuffer y_plane = planes[0].getBuffer();
             int y_plane_step = planes[0].getRowStride();
             mGray = new Mat(h, w, CvType.CV_8UC1, y_plane, y_plane_step);
-            return mGray;
+
+            if (mRotationIndex != 0) {
+                int[] rot = new int[]{-1, ROTATE_90_CLOCKWISE, ROTATE_180, ROTATE_90_COUNTERCLOCKWISE};
+                mGrayR = new Mat(w, h, CvType.CV_8UC1);
+                Core.rotate(mGray, mGrayR, rot[mRotationIndex]);
+                return mGrayR;
+            } else {
+                return mGray;
+            }
         }
 
         @Override
@@ -368,7 +402,6 @@ public class JavaCamera2View extends CameraBridgeViewBase {
                     assert(addr_diff == -1);
                     Imgproc.cvtColorTwoPlane(y_mat, uv_mat2, mRgba, Imgproc.COLOR_YUV2RGBA_NV21);
                 }
-                return mRgba;
             } else { // Chroma channels are not interleaved
                 byte[] yuv_bytes = new byte[w*(h+h/2)];
                 ByteBuffer y_plane = planes[0].getBuffer();
@@ -423,6 +456,14 @@ public class JavaCamera2View extends CameraBridgeViewBase {
                 Mat yuv_mat = new Mat(h+h/2, w, CvType.CV_8UC1);
                 yuv_mat.put(0, 0, yuv_bytes);
                 Imgproc.cvtColor(yuv_mat, mRgba, Imgproc.COLOR_YUV2RGBA_I420, 4);
+            }
+
+            if (mRotationIndex != 0) {
+                int[] rot = new int[]{-1,ROTATE_90_CLOCKWISE,ROTATE_180,ROTATE_90_COUNTERCLOCKWISE};
+                mRgbaR = new Mat(w, h, CvType.CV_8UC4);
+                Core.rotate(mRgba, mRgbaR, rot[mRotationIndex]);
+                return mRgbaR;
+            } else {
                 return mRgba;
             }
         }
@@ -438,10 +479,74 @@ public class JavaCamera2View extends CameraBridgeViewBase {
         public void release() {
             mRgba.release();
             mGray.release();
+            if (mRgbaR != null) {
+                mRgbaR.release();
+            }
+            if (mGrayR != null) {
+                mGrayR.release();
+            }
         }
 
         private Image mImage;
         private Mat mRgba;
         private Mat mGray;
-    };
+        private Mat mRgbaR;
+        private Mat mGrayR;
+    }
+
+    public int getRotationIndex() {
+        int camerarotation=0; //0,1,2,3 mean 0,90,180,270 CW degrees
+        int facerotation=0;   //backcamera:0 frontcamera:2
+        int devicerotation=0;  //0,1,2,3 mean 0,90,180,270 CW degrees
+        CameraManager manager = (CameraManager) getContext().getSystemService(Context.CAMERA_SERVICE);
+        try {
+            CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraID);
+            if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) facerotation = 0;
+            else facerotation = 2;
+            camerarotation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)/90;
+        } catch (CameraAccessException e) {
+            Log.e(LOGTAG, "getRotationIndex - Camera Access Exception", e);
+        } catch (IllegalArgumentException e) {
+            Log.e(LOGTAG, "getRotationIndex - Illegal Argument Exception", e);
+        } catch (SecurityException e) {
+            Log.e(LOGTAG, "getRotationIndex - Security Exception", e);
+        }
+        devicerotation = ((Activity)getContext()).getWindowManager().getDefaultDisplay().getRotation();
+        Log.i(LOGTAG,"getRotationIndex() facerotation, camerarotation, devicerotation = " + facerotation + ", " + camerarotation + ", " + devicerotation);
+        // face  camera   device     rotindex  (imagesensor-top-direction)  How to hold the device
+        //P10lite
+        //pixel4a
+        //Nexus7x
+        //   0      1       0        1    (CW90) portraite normal position
+        //   0      1       1        0    (0)    landscape  normal top is leftside
+        //   0      1       2        NU
+        //   0      1       3        2    (180)  landscape  normal top is rightside
+        //Nexus5x
+        //   0      3       0        3    (CCW90) portraite normal position
+        //   0      3       1        2    (180)   landscape  normal top is leftside
+        //   0      3       2        NU
+        //   0      3       3        0    (0)     landscape  normal top is rightside
+        //P10lite
+        //pixel4a
+        //Nexus5x
+        //Nexus7x
+        //   2      3       0        3    (CCW90) portraite normal position
+        //   2      3       1        0    (0)     landscape  normal top is leftside
+        //   2      3       2        NU
+        //   2      3       3        2    (180)   landscape  normal top is rightside
+        //Virtual model
+        //   2      1       0        1    (CW90) portraite normal position
+        //   2      1       1        2    (180)  landscape  normal top is leftside
+        //   2      1       2        NU
+        //   2      1       3        0    (0)    landscape  normal top is rightside
+
+        int rotationindex = 0;
+        if (mIsPortrait) {
+            rotationindex = camerarotation;
+        }
+        else {
+            rotationindex = (facerotation + camerarotation - devicerotation + 4) % 4;
+        }
+        return rotationindex;
+    }
 }
