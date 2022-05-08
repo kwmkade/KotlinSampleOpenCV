@@ -1,14 +1,16 @@
 package com.kwmkade.kotlinsampleopencv
 
 import android.os.Bundle
-import com.google.android.material.snackbar.Snackbar
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
-import android.view.Menu
-import android.view.MenuItem
 import com.kwmkade.kotlinsampleopencv.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -28,10 +30,36 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(navController.graph)
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        binding.fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null).show()
+        binding.spinner.also { spinner ->
+            spinner.adapter = ArrayAdapter(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                CascadeClassifierLoader.classifiers()
+            )
+            spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>, view: View, position: Int, id: Long
+                ) {
+                    val classifierId = CascadeClassifierLoader.findClassifierId(position)
+                    var args = Bundle().apply {
+                        putInt("classifier_id", classifierId)
+                    }
+                    navController.navigate(R.id.action_FirstFragment_Reload, args)
+
+                    spinner.visibility = View.INVISIBLE
+                    binding.classifierName.text = CascadeClassifierLoader.classifierName(classifierId)
+                }
+
+                override fun onNothingSelected(p0: AdapterView<*>?) {
+                }
+            }
         }
+
+        binding.fab.setOnClickListener {
+            binding.spinner.visibility = View.VISIBLE
+        }
+
+        binding.classifierName.text = CascadeClassifierLoader.classifierName(R.raw.haarcascade_frontalface_alt2)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

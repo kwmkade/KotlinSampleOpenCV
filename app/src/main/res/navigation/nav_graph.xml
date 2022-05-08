@@ -11,9 +11,19 @@
         android:label="@string/first_fragment_label"
         tools:layout="@layout/fragment_first">
 
+        <argument
+            android:name="classifier_id"
+            android:defaultValue="-1"
+            app:argType="integer" />
+
         <action
             android:id="@+id/action_FirstFragment_to_SecondFragment"
             app:destination="@id/SecondFragment" />
+
+        <action
+            android:id="@+id/action_FirstFragment_Reload"
+            app:destination="@id/FirstFragment"
+            app:launchSingleTop="false" />
     </fragment>
     <fragment
         android:id="@+id/SecondFragment"
